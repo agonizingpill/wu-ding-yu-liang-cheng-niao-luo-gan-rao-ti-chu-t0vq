@@ -10,6 +10,7 @@
 - 三轴脉冲原始窗 `weight_windows`，字段为 `gauge`（秤架）、`probes`（载荷／风振／底座）、`rain_mm`（原始雨量 mm）、`protected`（手工保留）、`state`（数据状态）。模型约束位于 `backend/domain/weight_windows_model.py`，规则位于 `weight_windows_service.py`。
 - 鸟落脉冲复核 `artifact_flags`，字段为 `window_code`（嫌疑窗）、`score`（独立成分残差）、`limit_value`（分位阈值）、`action`（复核动作）、`token`（分析号）。模型约束位于 `backend/domain/artifact_flags_model.py`，规则位于 `artifact_flags_service.py`。
 - 有效雨列签发 `rain_series`，字段为 `gauge`（秤架）、`flag`（复核签条）、`total`（有效累积 mm）、`n_windows`（签发时窗数）、`omitted`（排除时窗数）。模型约束位于 `backend/domain/rain_series_model.py`，规则位于 `rain_series_service.py`。
+- 同秤嫌疑窗整组复核 `pulse_groups`，字段为 `gauge`（秤架）、`windows`（圈选嫌疑窗）、`baseline`（冻结组外同秤基线）、`scores`（各窗残差）、`limit_value`（分位阈值）、`status`（复核状态）、`flag`（整组签条）、`rain`（雨列）。模型约束位于 `backend/domain/pulse_groups_model.py`，规则位于 `pulse_groups_service.py`。
 
 团队为模拟的7 人学校气象社，负责检查屋顶雨量秤读数。
 
@@ -26,6 +27,8 @@
 5. 11:10 保留框拦截第一次剔除。
 6. 13:10 校核纸本后解除保留，签认排除。
 7. 15:10 发布 48 个有效窗与一个剔除窗。
+
+复核员可在工作台圈选同秤嫌疑窗整组复核：冻结组外同秤基线统一给各窗判分；复核未结案时同秤旧签条暂缓签发，撤销复核即解封。任一窗没过剔除线或已被人工保留则整组退回；整组排除与雨列签发在同一事务内生效，同次签发重试不新增雨列。
 
 ## 启动
 
@@ -54,6 +57,7 @@ Compose 运行 Nginx、Python FastAPI、独立 Redis 消费进程、SQL 数据�
 | 屋顶气象架位 | `/roof_gauges` /roof_gauges/tare-scale | `frontend/src/pages/roof_gauges.js` |
 | 三轴脉冲原始窗 | `/weight_windows` /weight_windows/note-window，/weight_windows/protect-window | `frontend/src/pages/weight_windows.js` |
 | 鸟落脉冲复核 | `/artifact_flags` /artifact_flags/decompose，/artifact_flags/classify-pulse | `frontend/src/pages/artifact_flags.js` |
+| 同秤嫌疑窗整组复核 | `/pulse_groups` /pulse_groups/open-review，/pulse_groups/cancel-review，/pulse_groups/issue-review | `frontend/src/pages/pulse_groups.js` |
 | 有效雨列签发 | `/rain_series` /rain_series/publish-rain | `frontend/src/pages/rain_series.js` |
 
 SQL 实体与约束在 `backend/domain` 下维护。前端使用原生 ES modules。核心算子为 FastICA + 分位残差。标准化三路基线后用 FastICA 分解，取分量最大绝对值。末 12 条保留作 0.95 判别门槛。
