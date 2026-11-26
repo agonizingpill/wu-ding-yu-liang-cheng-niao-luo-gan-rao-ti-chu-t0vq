@@ -1,0 +1,74 @@
+name: roof-gauge-clean
+x-python: &python
+  build: ./backend
+  image: codex-ml/roof-gauge-clean-backend:local
+  environment:
+    DATABASE_URL: postgresql+psycopg://desk:${DB_PASSWORD:-workbench_password}@db/desk
+    REDIS_URL: redis://redis:6379/0
+    JWT_SECRET: ${JWT_SECRET:-local-demo-secret-roof-gauge-clean}
+    SEED_DEMO: ${SEED_DEMO:-true}
+  volumes:
+    - results:/results
+  depends_on:
+    db: {condition: service_healthy}
+    redis: {condition: service_healthy}
+services:
+  frontend:
+    container_name: ${COMPOSE_PROJECT_NAME:-roof-gauge-clean}-frontend
+    build: ./frontend
+    ports: ["127.0.0.1:${FRONTEND_PORT:-18324}:80"]
+    depends_on:
+      backend: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+  backend:
+    <<: *python
+    container_name: ${COMPOSE_PROJECT_NAME:-roof-gauge-clean}-backend
+    ports: ["127.0.0.1:${BACKEND_PORT:-19324}:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  worker:
+    <<: *python
+    container_name: ${COMPOSE_PROJECT_NAME:-roof-gauge-clean}-worker
+    command: ["python", "-m", "core.worker"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import time,os; assert time.time()-os.stat('/tmp/compute-heartbeat').st_mtime < 20"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  db:
+    container_name: ${COMPOSE_PROJECT_NAME:-roof-gauge-clean}-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: desk
+      POSTGRES_USER: desk
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-workbench_password}
+    volumes:
+      - database:/var/lib/postgresql/data
+    ports: ["127.0.0.1:${DB_PORT:-17824}:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U desk -d desk"]
+      interval: 2s
+      timeout: 3s
+      retries: 35
+  redis:
+    container_name: ${COMPOSE_PROJECT_NAME:-roof-gauge-clean}-redis
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - broker:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+volumes:
+  database:
+  broker:
+  results:
